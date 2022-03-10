@@ -44,10 +44,10 @@ This repository contains the code of our CVPR 2022 paper "[Shadows can be Danger
 
 ## Usage of shadow_attack.py
 
- - Datasets and trained models  
+ - **Datasets and trained models**  
    You should first download [the LISA and GTSRB datasets](https://drive.google.com/file/d/1Du8egeUG6XgAVf-h9IcxRz5gZvs7_Ldq/view?usp=sharing) and [our trained models](https://drive.google.com/file/d/1C0k77EeZrByBUdv36IxS9PiLUvZXRr24/view?usp=sharing) and place them in dataset/ and model/, respectively.
 
- - Requirements:
+ - **Requirements:**  
    ```text
    python = 3.8.11
    pytorch = 1.9.0
@@ -56,7 +56,7 @@ This repository contains the code of our CVPR 2022 paper "[Shadows can be Danger
    To run in an environment without cuda enabled, change `"device": "cuda:0"` to `"device": "cpu"` in params.json.
 
 
- - Example 1: show help message.
+ - **Example 1: show help message.**
    ```shell
    $ python3 shadow_attack.py --help
    ```
@@ -76,7 +76,7 @@ This repository contains the code of our CVPR 2022 paper "[Shadows can be Danger
    --target_model       attack normal model or robust model
    ```
    
- - Example 2: our digital attack:  
+ - **Example 2: our digital attack:**  
   The following shell will launch our digital attack on LISA while setting the shadow level $k$ as 0.43. The generated digital adversarial examples will be saved to adv_img/LISA/.
    ```shell
    $ python3 shadow_attack.py --shadow_level 0.43 --attack_db LISA
@@ -93,7 +93,7 @@ This repository contains the code of our CVPR 2022 paper "[Shadows can be Danger
    Attack finished! Success rate: 0.9822888283378747
    ```
  
- - Example 3: our physical attack:  
+ - **Example 3: our physical attack:**  
    The following shell will launch our physical attack. The generated images will be saved as ./tmp/adv_img.png.
    ```shell
    $ python3 shadow_attack.py --shadow_level 0.43 --attack_db GTSRB --attack_type physical --image_path ./tmp/gtsrb_30.png --mask_path ./tmp/gtsrb_30_mask.png --image_label 1 
@@ -113,7 +113,7 @@ This repository contains the code of our CVPR 2022 paper "[Shadows can be Danger
    Attack succeed! Try to implement it in the real world.
    ```
  
- - Example 4: Change the number of sides of polygon P, e.g., 4:
+ - **Example 4: Change the number of sides of polygon P, e.g., 4:**
    ```shell
    $ python3 shadow_attack.py --attack_db LISA --polygon 4
    ```
