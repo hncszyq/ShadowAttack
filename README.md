@@ -4,7 +4,6 @@ This repository contains the code of our CVPR 2022 paper "[Shadows can be Danger
 
 <br/>
 <img src="./tmp/digitalexample.png" height = "400" alt="digital_example" align=center/>
-<br/>
 
 ## Structure
 
