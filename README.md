@@ -9,8 +9,8 @@ This repository contains the code of our CVPR 2022 paper "[Shadows can be Danger
 │   ├── GTSRB          // Adversarial examples from GTSRB dataset
 │   └── LISA           // Adversarial examples from LISA dataset
 │       └── 43         // Adversarial examples when k = 0.43
-│           └── 78_10_21_True.bmp
-│                      // 78: image index in the testing set; 10: ground truth class; 21: number of queries; True: attack succeed
+│           └── 81_10_43_True.bmp
+│                      // 81: image index in the testing set; 10: ground truth class; 43: number of queries; True: attack succeed
 ├── dataset            
 │   ├── GTSRB  
 │   │   ├── train.pkl  // GTSRB training set  
@@ -77,7 +77,7 @@ This repository contains the code of our CVPR 2022 paper "[Shadows can be Danger
    ```
    
  - **Example 2: our digital attack:**  
-  The following shell will launch our digital attack on LISA while setting the shadow level $k$ as 0.43. The generated digital adversarial examples will be saved to adv_img/LISA/.
+  The following shell will launch our digital attack on LISA while setting the shadow level $k$ as 0.43. The generated digital adversarial examples will be saved to adv_img/LISA/43/.
    ```shell
    $ python3 shadow_attack.py --shadow_level 0.43 --attack_db LISA
    ```
