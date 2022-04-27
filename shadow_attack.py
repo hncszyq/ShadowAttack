@@ -107,7 +107,6 @@ def attack(attack_image, label, coords, targeted_attack=False, physical_attack=F
         succeed: Whether the attack is successful.
         num_query: Number of queries.
     """
-    print(coords)
     num_query = 0
     succeed = False
     global_best_solution = float('inf')
