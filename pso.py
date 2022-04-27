@@ -3,223 +3,182 @@
 import torch
 import json
 import numpy as np
-import random
 from utils import draw_shadow
 from utils import shadow_edge_blur
 from utils import image_transformation
 from utils import random_param_generator
 from utils import polygon_correction
-from torchvision import transforms
-from gtsrb import pre_process_image
+from torchvision.transforms import Compose
 
 with open('params.json', 'r') as config:
     params = json.load(config)
     device = params['device']
 
-data_transforms = transforms.Compose([
-    transforms.ToTensor(),
-    # transforms.Normalize(tuple(mean), tuple(std))
-])
-
-_shadow_level = None
-
-
-def fit_fun(position, img, model, attack_db, pos_list,
-            targeted_attack=False, physical_attack=False, parameters=None):
-
-    if physical_attack:
-        motion_degree = parameters.get("motion_degree", [0])
-        motion_angle = parameters.get("motion_angle", [0])
-        size_mul = parameters.get("size_mul", [1])
-        brightness_mul = parameters.get("brightness_mul", [1])
-        shadow_mul = parameters.get("shadow_mul", [0.5])
-        shadow_move = parameters.get("shadow_move", [[0, 0]])
-        perspective_mat = parameters.get("perspective_mat",
-                                         [np.float32([[0, 0], [223, 0], [223, 223], [0, 223]])])
-        img = image_transformation(img, position, pos_list, motion_degree, motion_angle,
-                                   size_mul, brightness_mul, shadow_mul, shadow_move,
-                                   perspective_mat, attack_db == "GTSRB").to(device)
-    else:
-        img, shadow_area = draw_shadow(position, img, pos_list, _shadow_level)
-        img = shadow_edge_blur(img, shadow_area, 3)
-        img = pre_process_image(img).astype(np.float32) if attack_db == "GTSRB" else img
-        img = data_transforms(img).unsqueeze(0).to(device)
-
-    with torch.no_grad():
-        predict = torch.softmax(model(img), 1)
-        predict = torch.mean(predict, dim=0)
-        label = parameters.get("label")
-
-    if targeted_attack:
-        target = parameters.get("target")
-        confidence = float(1 - predict[target])
-        success = torch.argmax(predict) == target
-    else:
-        confidence = float(predict[label])
-        success = torch.argmax(predict) != label
-
-    return confidence, success, predict
-
 
 class Particle:
+    r"""
+    Particles in PSO.
 
-    # initialization
-    def __init__(self, x_min, x_max, max_speed, dim, img, attack_db, pos_list, model,
-                 targeted_attack, physical_attack, parameters):
-        self.__pos = polygon_correction(np.array([random.uniform(x_min, x_max) for _ in range(dim)]))
-        self.__speed = np.array([random.uniform(-max_speed, max_speed) for _ in range(dim)])
-        self.__bestPos = np.array([0.0 for _ in range(dim)])
-        self.__fitnessValue, _, _ = fit_fun(self.__pos, img, model, attack_db, pos_list,
-                                            targeted_attack, physical_attack, parameters)
-
-    def set_pos(self, i, value):
-
-        self.__pos[i] = value
-
-    def get_pos(self):
-
-        return self.__pos
-
-    def set_best_pos(self, i, value):
-
-        self.__bestPos[i] = value
-
-    def get_best_pos(self):
-
-        return self.__bestPos
-
-    def set_speed(self, i, value):
-
-        self.__speed[i] = value
-
-    def get_speed(self):
-
-        return self.__speed
-
-    def set_fitness_value(self, value):
-
-        self.__fitnessValue = value
-
-    def get_fitness_value(self):
-
-        return self.__fitnessValue
+    Args:
+        dim: Number of parameters to be optimized.
+        coord_min: The minimum coordinate values.
+        coord_max: The maximum coordinate values.
+        max_speed: The maximum speed of a particle.
+    """
+    def __init__(
+        self,
+        dim: int = 6,
+        coord_min: float = -16.,
+        coord_max: float = 48.,
+        max_speed: float = 1.5
+    ) -> None:
+        self.pos = polygon_correction(np.random.uniform(coord_min, coord_max, dim))
+        self.speed = np.random.uniform(-max_speed, max_speed, dim)
+        self.best_pos = np.zeros(dim)
+        self.fitness_value = float('inf')
 
 
 class PSO:
-    def __init__(self,
-                 dim,        # Number of parameters to be optimized
-                 size,       # Number of particles
-                 iter_num,   # The maximum number of iterations
-                 x_min,      # The minimum value of x and y (coord)
-                 x_max,      # The maximum value of x and y (coord)
-                 max_speed,  # The maximum speed of a particle
-                 img,        # Our targeted image
-                 attack_db,  # Our targeted dataset
-                 pos_list,   # the area in mask M
-                 model,      # Our targeted model
-                 targeted_attack=False,
-                 physical_attack=False,
-                 parameters=None,
-                 c1=2,
-                 c2=2,
-                 w=1):
-        self.c1 = c1
-        self.c2 = c2
-        self.w = w
+    r"""
+    Particle Swarm optimization.
+
+    Args:
+        dim: Number of parameters to be optimized.
+        size: Number of particles.
+        iter_num: The maximum number of iterations.
+        coord_min: The minimum coordinate values.
+        coord_max: The maximum coordinate values.
+        max_speed: The maximum speed of a particle.
+        coefficient: The shadow coefficient :math:`k`.
+        label: The ground-truth label of the image.
+        image: The image to be attacked with shape :math:`(3, H, W)`.
+        coord: The coordinates of the points where mask == 1.
+        model: The model to be attacked.
+        targeted: Targeted / Non-targeted attack.
+        physical: Physical / digital attack.
+        pre_process: Pre-processing operations on the image.
+    """
+    def __init__(
+        self,
+        dim: int = 6,
+        size: int = 10,
+        iter_num: int = 100,
+        coord_min: float = -16.,
+        coord_max: float = 48.,
+        max_speed: float = 1.5,
+        coefficient: float = .43,
+        image: torch.Tensor = None,
+        coord: torch.Tensor = None,
+        model: torch.nn.Module = None,
+        targeted: bool = False,
+        physical: bool = False,
+        label: int = 0,
+        pre_process: Compose = Compose([]),
+        **parameters
+    ) -> None:
+        self.w = 1                  # Inertia weight of PSO.
+        self.c1 = self.c2 = 2       # Acceleration coefficient of PSO.
         self.dim = dim
         self.size = size
         self.iter_num = iter_num
-        self.x_min = x_min
-        self.x_max = x_max
+        self.coord_min = coord_min
+        self.coord_max = coord_max
         self.max_speed = max_speed
-        self.img = img
-        self.image_width = img.shape[1]
-        self.image_height = img.shape[0]
-        self.attack_db = attack_db
-        self.pos_list = pos_list
+        self.coefficient = coefficient
+        self.label = label
+        self.image = image
+        self.coord = coord
         self.model = model
-        self.best_fitness_value = float('Inf')
-        self.best_position = [0.0 for _ in range(dim)]
-        self.fitness_val_list = []
-        self.success = False
-        self.targeted_attack = targeted_attack
-        self.physical_attack = physical_attack
+        self.targeted = targeted
+        self.physical = physical
+        self.pre_process = pre_process
+        self.best_fitness_value = float('inf')
+        self.best_position = np.zeros(dim)
         self.parameters = parameters
+        self.succeed = False
+        self.num_query = 0
 
-        global _shadow_level
-        from shadow_attack import shadow_level
-        _shadow_level = shadow_level
-
-        # Population initialization
+        # Population_initialization
         self.Particle_list = [
-            Particle(x_min, x_max, max_speed, dim, img, attack_db, pos_list, model,
-                     targeted_attack, physical_attack, parameters) for _ in range(self.size)]
+            Particle(dim, coord_min, coord_max, max_speed) for _ in range(size)]
 
-    def set_best_fitness_value(self, value):
-        self.best_fitness_value = value
+    def fit_fun(self, position, **parameters):
+        r"""
+        Fitness function in PSO.
 
-    def get_best_fitness_value(self):
-        return self.best_fitness_value
+        Args:
+            position: The coordinates of the vertices of the polygonal shadow area.
 
-    def set_best_position(self, i, value):
-        self.best_position[i] = value
+        Returns:
+            confidence: The lower the value, the more successful the attack.
+            success: Whether the attack is successful.
+            predict: The model output.
+        """
 
-    def get_best_position(self):
-        return self.best_position
+        if self.physical:
+            img = image_transformation(
+                self.image, position, self.coord,
+                *parameters.get('rand_param'), self.pre_process).to(device)
+        else:
+            img, shadow_area = draw_shadow(position, self.image, self.coord, self.coefficient)
+            img = shadow_edge_blur(img, shadow_area, 3)
+            img = self.pre_process(img).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            predict = torch.softmax(self.model(img), 1)
+            predict = torch.mean(predict, dim=0)
+
+        if self.targeted:
+            target = parameters.get("target")
+            confidence = float(1 - predict[target])
+            success = torch.argmax(predict) == target
+        else:
+            confidence = float(predict[self.label])
+            success = torch.argmax(predict) != self.label
+
+        self.num_query += img.shape[0]
+        return confidence, success, predict
 
     def update_speed(self, part):
-        for i in range(self.dim):
-            speed_value = self.w * part.get_speed()[i] \
-                        + self.c1 * random.random() * (part.get_best_pos()[i] - part.get_pos()[i]) \
-                        + self.c2 * random.random() * (self.get_best_position()[i] - part.get_pos()[i])
-            if speed_value > self.max_speed:
-                speed_value = self.max_speed
-            elif speed_value < -self.max_speed:
-                speed_value = -self.max_speed
-            part.set_speed(i, speed_value)
+        speed_value = self.w * part.speed \
+                    + self.c1 * np.random.uniform(self.dim) * (part.best_pos - part.pos) \
+                    + self.c2 * np.random.uniform(self.dim) * (self.best_position - part.pos)
+        part.speed = speed_value.clip(-self.max_speed, self.max_speed)
 
     def update_pos(self, part, **parameters):
-        speed = part.get_speed()
-        position = polygon_correction(np.clip(part.get_pos(), self.x_min, self.x_max) + speed)
-        for i in range(self.dim):
-            part.set_pos(i, position[i])
+        part.pos = polygon_correction(
+            (part.pos + part.speed).clip(self.coord_min, self.coord_max))
         parameters.update(self.parameters)
-        value, self.success, _ = fit_fun(position, self.img, self.model, self.attack_db, self.pos_list,
-                                         self.targeted_attack, self.physical_attack, parameters)
-        if value < part.get_fitness_value():
-            part.set_fitness_value(value)
-            for i in range(self.dim):
-                part.set_best_pos(i, position[i])
-        if value < self.get_best_fitness_value() or (self.success and not self.physical_attack):
-            self.set_best_fitness_value(value)
-            for i in range(self.dim):
-                self.set_best_position(i, position[i])
+        value, succeed, _ = self.fit_fun(part.pos, **parameters)
+        self.succeed |= succeed
+        if value < part.fitness_value:
+            part.fitness_value = value
+            part.best_pos = part.pos
+        if value < self.best_fitness_value or (succeed and not self.physical):
+            self.best_fitness_value = value
+            self.best_position = part.pos
 
-    def update(self):
-        i = j = 0
-        for i in range(self.iter_num):
-            j = 0
-            for j, part in enumerate(self.Particle_list):
+    def update_digital(self):
+        # Run the PSO algorithm for digital attack.
+        for _ in range(self.iter_num):
+            for part in self.Particle_list:
+                if self.succeed:
+                    break
                 self.update_speed(part)
                 self.update_pos(part)
-                if self.success:
-                    break
-            self.fitness_val_list.append(self.get_best_fitness_value())
-            if self.success:
-                break
-        return self.fitness_val_list, self.get_best_position(), self.success, (i+1)*10+j+1
+
+        return self.best_fitness_value, self.best_position, self.succeed, self.num_query
 
     def update_physical(self):
+        # Run the PSO algorithm for physical attack.
         num = self.parameters.get("transform_num")
-        w, h = self.image_width, self.image_height
+        h, w, _ = self.image.shape
 
         for i in range(self.iter_num):
-            print(f"iteration: {i + 1}", end=" ")
             for part in self.Particle_list:
                 self.update_speed(part)
-                _num = num if i < self.iter_num - 100 else 0
-                self.update_pos(part, **random_param_generator(_num, w, h))
-            self.fitness_val_list.append(self.get_best_fitness_value())
-            print(self.get_best_fitness_value())
+                _num = num * (i < self.iter_num - 100)
+                self.update_pos(part, rand_param=random_param_generator(_num, w, h))
+            print(f"iteration: {i + 1} {self.best_fitness_value}")
 
-        return self.fitness_val_list, self.get_best_position(), self.success, -1
+        return self.best_fitness_value, self.best_position, self.succeed, self.num_query

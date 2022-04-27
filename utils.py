@@ -78,25 +78,12 @@ def load_mask():
     return position_list, mask_list
 
 
-# def cal_mean_std(database_path):
-#
-#     x, _, _, _ = load(database_path)
-#     means = np.array((0., 0., 0.))
-#     stds = np.array((0., 0., 0.))
-#     for image in x:
-#         image_tensor = transforms.ToTensor()(image)
-#         for c in range(3):
-#             means[c] += image_tensor[c, :, :].mean()
-#             stds[c] += image_tensor[c, :, :].std()
-#     return means / len(x), stds / len(x)
-
-
 def pre_process_image(image):
     image[:, :, 0] = cv2.equalizeHist(image[:, :, 0])
     image[:, :, 1] = cv2.equalizeHist(image[:, :, 1])
     image[:, :, 2] = cv2.equalizeHist(image[:, :, 2])
     image = image / 255. - .5
-    return image
+    return image.astype(np.float32)
 
 
 def judge_inside(vertices, p):
@@ -243,17 +230,11 @@ def random_param_generator(num, w, h):
          [w * random.uniform(0, 0.1), h * (1 - random.uniform(0, 0.1))]]) for _ in range(num)] + \
         [np.float32([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]])]
 
-    return {"motion_degree": motion_degree,
-            "motion_angle": motion_angle,
-            "size_mul": size_mul,
-            "brightness_mul": brightness_mul,
-            "shadow_mul": shadow_mul,
-            "shadow_move": shadow_move,
-            "perspective_mat": perspective_mat}
+    return motion_degree, motion_angle, size_mul, brightness_mul, shadow_mul, shadow_move, perspective_mat
 
 
 def image_transformation(image, position, pos_list, motion_degree, motion_angle, size_mul,
-                         brightness_mul, shadow_mul, shadow_move, perspective_mat, preprocess=False):
+                         brightness_mul, shadow_mul, shadow_move, perspective_mat, pre_process):
     transform_num = len(motion_degree)
     h, w, _ = image.shape
     res_images = []
@@ -290,9 +271,8 @@ def image_transformation(image, position, pos_list, motion_degree, motion_angle,
         res_images.append(adv_img)
 
     for i in range(transform_num):
-        res_images[i] = pre_process_image(res_images[i]).astype(np.float32) if preprocess else res_images[i]
         res_images[i] = cv2.resize(res_images[i], (32, 32))
-        res_images[i] = transforms.ToTensor()(res_images[i])
+        res_images[i] = pre_process(res_images[i])
 
     return torch.stack(res_images, dim=0)
 
