@@ -272,7 +272,7 @@ def train_model(adv_train=False):
     image_test, label_test = processed_test, test_labels
 
     training_model = GtsrbCNN(n_class=class_n).to(device).apply(weights_init)
-    training(training_model, image_train, label_train, image_test, label_test)
+    training(training_model, image_train, label_train, image_test, label_test, adv_train)
 
 
 def test_model(adv_model=False):
